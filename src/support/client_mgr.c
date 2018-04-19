@@ -172,6 +172,11 @@ struct gsh_client *get_gsh_client(sockaddr_t *client_ipaddr, bool lookup_only)
 	}
 	break;
 #endif /* VSOCK */
+	case AF_UNIX:
+		addr = (uint8_t *) &((struct sockaddr_un *)client_ipaddr)->sun_path;
+		addr_len = strlen((char *) addr);
+		memcpy(&ipaddr, (uint8_t *) &((struct sockaddr_un *)client_ipaddr)->sun_path, sizeof(ipaddr));
+		break;
 	default:
 		assert(0);
 	}
@@ -303,6 +308,11 @@ int remove_gsh_client(sockaddr_t *client_ipaddr)
 	}
 	break;
 #endif /* VSOCK */
+	case AF_UNIX:
+		addr = (uint8_t *) &((struct sockaddr_un *)client_ipaddr)->sun_path;
+		addr_len = strlen((char *) addr);
+		memcpy(&ipaddr, (uint8_t *) &((struct sockaddr_un *)client_ipaddr)->sun_path, sizeof(ipaddr));
+		break;
 	default:
 		assert(0);
 	}

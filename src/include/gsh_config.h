@@ -195,6 +195,7 @@ typedef enum protos {
 				CORE_OPTION_9P)
 
 typedef struct nfs_core_param {
+	char *socket_path;
 	/** An array of port numbers, one for each protocol.  Set by
 	    the NFS_Port, MNT_Port, NLM_Port, and Rquota_Port options. */
 	uint16_t port[P_COUNT];

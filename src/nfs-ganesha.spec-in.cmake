@@ -39,42 +39,42 @@ Requires: openSUSE-release
 # %bcond_with means you add a "--with" option, default = without this feature
 # %bcond_without adds a"--without" so the feature is enabled by default
 
-@BCOND_NULLFS@ nullfs
+%bcond_with nullfs
 %global use_fsal_null %{on_off_switch nullfs}
 
-@BCOND_MEM@ mem
+%bcond_with mem
 %global use_fsal_mem %{on_off_switch mem}
 
-@BCOND_GPFS@ gpfs
+%bcond_with gpfs
 %global use_fsal_gpfs %{on_off_switch gpfs}
 
-@BCOND_XFS@ xfs
+%bcond_with xfs
 %global use_fsal_xfs %{on_off_switch xfs}
 
-@BCOND_CEPH@ ceph
+%bcond_without ceph
 %global use_fsal_ceph %{on_off_switch ceph}
 
-@BCOND_RGW@ rgw
+%bcond_with rgw
 %global use_fsal_rgw %{on_off_switch rgw}
 
-@BCOND_GLUSTER@ gluster
+%bcond_with gluster
 %global use_fsal_gluster %{on_off_switch gluster}
 
-@BCOND_PANFS@ panfs
+%bcond_with panfs
 %global use_fsal_panfs %{on_off_switch panfs}
 
-@BCOND_RDMA@ rdma
+%bcond_with rdma
 %global use_rdma %{on_off_switch rdma}
 
 @BCOND_JEMALLOC@ jemalloc
 
-@BCOND_LTTNG@ lttng
+%bcond_with lttng
 %global use_lttng %{on_off_switch lttng}
 
-@BCOND_UTILS@ utils
+%bcond_with utils
 %global use_utils %{on_off_switch utils}
 
-@BCOND_GUI_UTILS@ gui_utils
+%bcond_with gui_utils
 %global use_gui_utils %{on_off_switch gui_utils}
 
 @BCOND_NTIRPC@ system_ntirpc
@@ -83,10 +83,10 @@ Requires: openSUSE-release
 @BCOND_MAN_PAGE@ man_page
 %global use_man_page %{on_off_switch man_page}
 
-@BCOND_RADOS_RECOV@ rados_recov
+%bcond_with rados_recov
 %global use_rados_recov %{on_off_switch rados_recov}
 
-@BCOND_RADOS_URLS@ rados_urls
+%bcond_with rados_urls
 %global use_rados_urls %{on_off_switch rados_urls}
 
 %global dev_version %{lua: s = string.gsub('@GANESHA_EXTRA_VERSION@', '^%-', ''); s2 = string.gsub(s, '%-', '.'); print((s2 ~= nil and s2 ~= '') and s2 or "0.1") }
@@ -111,13 +111,13 @@ BuildRequires:	krb5-devel
 %if ( 0%{?suse_version} >= 1330 )
 BuildRequires:  libnsl-devel
 %endif
-%if ( 0%{?suse_version} )
-BuildRequires:	dbus-1-devel
-Requires:	dbus-1
-%else
-BuildRequires:	dbus-devel
-Requires:	dbus
-%endif
+#%if ( 0%{?suse_version} )
+#BuildRequires:	dbus-1-devel
+#Requires:	dbus-1
+#%else
+#BuildRequires:	dbus-devel
+#Requires:	dbus
+#%endif
 
 %if ( 0%{?suse_version} )
 BuildRequires:	systemd-rpm-macros
@@ -301,7 +301,7 @@ be used with NFS-Ganesha to support GPFS backend
 Summary: The NFS-GANESHA's CephFS FSAL
 Group: Applications/System
 Requires:	nfs-ganesha = %{version}-%{release}
-BuildRequires:	libcephfs-devel >= 10.2.0
+BuildRequires:	libcephfs1-devel >= 10.2.0
 
 %description ceph
 This package contains a FSAL shared object to
@@ -402,8 +402,9 @@ Development headers and auxiliary files for developing with %{name}.
 %setup -q -n %{sourcename}
 
 %build
-cmake .	-DCMAKE_BUILD_TYPE=Debug			\
+cmake .	-DCMAKE_BUILD_TYPE=RelWithDebInfo			\
 	-DBUILD_CONFIG=rpmbuild				\
+	-DDSANITIZE_ADDRESS=OFF				\
 	-DUSE_FSAL_NULL=%{use_fsal_null}		\
 	-DUSE_FSAL_MEM=%{use_fsal_mem}			\
 	-DUSE_FSAL_XFS=%{use_fsal_xfs}			\
@@ -421,8 +422,19 @@ cmake .	-DCMAKE_BUILD_TYPE=Debug			\
 	-DRADOS_URLS=%{use_rados_urls}			\
 	-DUSE_FSAL_VFS=ON				\
 	-DUSE_FSAL_PROXY=ON				\
-	-DUSE_DBUS=ON					\
-	-DUSE_9P=ON					\
+	-DUSE_DBUS=OFF					\
+	-DUSE_9P=OFF					\
+	-DUSE_GSS=OFF				\
+	-DUSE_NFS3=OFF				\
+	-DUSE_NFSIDMAP=OFF			\
+	-DUSE_NFS_RDMA=OFF			\
+	-DUSE_NLM=OFF				\
+	-DUSE_RPC_RDMA=OFF			\
+	-DUSE_VSOCK=OFF				\
+	-D_MSPAC_SUPPORT=OFF			\
+	-D_USE_9P=OFF				\
+	-D_USE_9P_RDMA=OFF			\
+	-D_USE_NFS_RDMA=OFF			\
 	-DDISTNAME_HAS_GIT_DATA=OFF			\
 	-DUSE_MAN_PAGE=%{use_man_page}                  \
 %if %{with jemalloc}

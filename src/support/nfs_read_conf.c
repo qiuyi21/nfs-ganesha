@@ -74,6 +74,8 @@ static struct config_item_list protocols[] = {
 };
 
 static struct config_item core_params[] = {
+	CONF_ITEM_PATH("Socket_Path", 0, sizeof(((struct sockaddr_un *)0)->sun_path) - 5, "",
+		       nfs_core_param, socket_path),
 	CONF_ITEM_UI16("NFS_Port", 0, UINT16_MAX, NFS_PORT,
 		       nfs_core_param, port[P_NFS]),
 	CONF_ITEM_UI16("MNT_Port", 0, UINT16_MAX, 0,

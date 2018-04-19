@@ -122,8 +122,10 @@ const char *tags[] = {
 };
 
 typedef struct proto_data {
-	struct sockaddr_in sinaddr_udp;
-	struct sockaddr_in sinaddr_tcp;
+	union {
+		struct sockaddr_in in;
+		struct sockaddr_un un;
+	} sinaddr_udp, sinaddr_tcp;
 	struct sockaddr_in6 sinaddr_udp6;
 	struct sockaddr_in6 sinaddr_tcp6;
 	struct netbuf netbuf_udp6;
@@ -566,6 +568,7 @@ static int Bind_sockets_V4(void)
 {
 	protos p;
 	int    rc = 0;
+	uint8_t afunix = nfs_param.core_param.socket_path != NULL && *nfs_param.core_param.socket_path;
 
 	for (p = P_NFS; p < P_COUNT; p++) {
 		if (nfs_protocol_enabled(p)) {
@@ -574,18 +577,29 @@ static int Bind_sockets_V4(void)
 
 			memset(&pdatap->sinaddr_udp, 0,
 			       sizeof(pdatap->sinaddr_udp));
-			pdatap->sinaddr_udp.sin_family = AF_INET;
-			/* all interfaces */
-			pdatap->sinaddr_udp.sin_addr.s_addr =
-			    ((struct sockaddr_in *)
-			    &nfs_param.core_param.bind_addr)->sin_addr.s_addr;
-			pdatap->sinaddr_udp.sin_port =
-			    htons(nfs_param.core_param.port[p]);
+			if (p == P_NFS && afunix) {
+				pdatap->sinaddr_udp.un.sun_family = AF_UNIX;
+				sprintf(pdatap->sinaddr_udp.un.sun_path, "%s.udp", nfs_param.core_param.socket_path);
+				unlink(pdatap->sinaddr_udp.un.sun_path);
 
-			pdatap->netbuf_udp6.maxlen =
-			    sizeof(pdatap->sinaddr_udp);
-			pdatap->netbuf_udp6.len = sizeof(pdatap->sinaddr_udp);
-			pdatap->netbuf_udp6.buf = &pdatap->sinaddr_udp;
+				pdatap->netbuf_udp6.maxlen = sizeof(pdatap->sinaddr_udp.un);
+				pdatap->netbuf_udp6.len = offsetof(struct sockaddr_un, sun_path) +
+						strlen(pdatap->sinaddr_udp.un.sun_path) + 1;
+				pdatap->netbuf_udp6.buf = &pdatap->sinaddr_udp.un;
+			} else {
+				pdatap->sinaddr_udp.in.sin_family = AF_INET;
+				/* all interfaces */
+				pdatap->sinaddr_udp.in.sin_addr.s_addr =
+				    ((struct sockaddr_in *)
+				    &nfs_param.core_param.bind_addr)->sin_addr.s_addr;
+				pdatap->sinaddr_udp.in.sin_port =
+				    htons(nfs_param.core_param.port[p]);
+
+				pdatap->netbuf_udp6.maxlen =
+				    sizeof(pdatap->sinaddr_udp.in);
+				pdatap->netbuf_udp6.len = sizeof(pdatap->sinaddr_udp.in);
+				pdatap->netbuf_udp6.buf = &pdatap->sinaddr_udp.in;
+			}
 
 			pdatap->bindaddr_udp6.qlen = SOMAXCONN;
 			pdatap->bindaddr_udp6.addr = pdatap->netbuf_udp6;
@@ -596,6 +610,10 @@ static int Bind_sockets_V4(void)
 					"Cannot get %s socket info for udp6 socket errno=%d (%s)",
 					tags[p], errno, strerror(errno));
 				return -1;
+			}
+
+			if (p == P_NFS && afunix) {
+				pdatap->si_udp6.si_alen = pdatap->netbuf_udp6.len;
 			}
 
 			rc = bind(udp_socket[p],
@@ -611,18 +629,29 @@ static int Bind_sockets_V4(void)
 
 			memset(&pdatap->sinaddr_tcp, 0,
 			       sizeof(pdatap->sinaddr_tcp));
-			pdatap->sinaddr_tcp.sin_family = AF_INET;
-			/* all interfaces */
-			pdatap->sinaddr_udp.sin_addr.s_addr =
-			    ((struct sockaddr_in *)
-			    &nfs_param.core_param.bind_addr)->sin_addr.s_addr;
-			pdatap->sinaddr_tcp.sin_port =
-			    htons(nfs_param.core_param.port[p]);
+			if (p == P_NFS && afunix) {
+				pdatap->sinaddr_tcp.un.sun_family = AF_UNIX;
+				strcpy(pdatap->sinaddr_tcp.un.sun_path, nfs_param.core_param.socket_path);
+				unlink(pdatap->sinaddr_tcp.un.sun_path);
 
-			pdatap->netbuf_tcp6.maxlen =
-			    sizeof(pdatap->sinaddr_tcp);
-			pdatap->netbuf_tcp6.len = sizeof(pdatap->sinaddr_tcp);
-			pdatap->netbuf_tcp6.buf = &pdatap->sinaddr_tcp;
+				pdatap->netbuf_tcp6.maxlen = sizeof(pdatap->sinaddr_tcp.un);
+				pdatap->netbuf_tcp6.len = offsetof(struct sockaddr_un, sun_path) +
+						strlen(pdatap->sinaddr_tcp.un.sun_path) + 1;
+				pdatap->netbuf_tcp6.buf = &pdatap->sinaddr_tcp.un;
+			} else {
+				pdatap->sinaddr_tcp.in.sin_family = AF_INET;
+				/* all interfaces */
+				pdatap->sinaddr_tcp.in.sin_addr.s_addr =
+				    ((struct sockaddr_in *)
+				    &nfs_param.core_param.bind_addr)->sin_addr.s_addr;
+				pdatap->sinaddr_tcp.in.sin_port =
+				    htons(nfs_param.core_param.port[p]);
+
+				pdatap->netbuf_tcp6.maxlen =
+				    sizeof(pdatap->sinaddr_tcp.in);
+				pdatap->netbuf_tcp6.len = sizeof(pdatap->sinaddr_tcp.in);
+				pdatap->netbuf_tcp6.buf = &pdatap->sinaddr_tcp.in;
+			}
 
 			pdatap->bindaddr_tcp6.qlen = SOMAXCONN;
 			pdatap->bindaddr_tcp6.addr = pdatap->netbuf_tcp6;
@@ -633,6 +662,10 @@ static int Bind_sockets_V4(void)
 					"V4 : Cannot get %s socket info for tcp socket error %d(%s)",
 					tags[p], errno, strerror(errno));
 				return -1;
+			}
+
+			if (p == P_NFS && afunix) {
+				pdatap->si_tcp6.si_alen = pdatap->netbuf_tcp6.len;
 			}
 
 			rc = bind(tcp_socket[p],
@@ -804,9 +837,14 @@ static int alloc_socket_setopts(int p)
  */
 static int Allocate_sockets_V4(int p)
 {
-	udp_socket[p] = socket(AF_INET,
+	uint8_t afunix = nfs_param.core_param.socket_path != NULL && *nfs_param.core_param.socket_path;
+	if (p == P_NFS && afunix) {
+		udp_socket[p] = socket(AF_UNIX, SOCK_DGRAM, IPPROTO_IP);
+	} else {
+		udp_socket[p] = socket(AF_INET,
 			       SOCK_DGRAM,
 			       IPPROTO_UDP);
+	}
 
 	if (udp_socket[p] == -1) {
 		if (errno == EAFNOSUPPORT) {
@@ -821,9 +859,13 @@ static int Allocate_sockets_V4(int p)
 		return -1;
 	}
 
-	tcp_socket[p] = socket(AF_INET,
+	if (p == P_NFS && afunix) {
+		tcp_socket[p] = socket(AF_UNIX, SOCK_STREAM, IPPROTO_IP);
+	} else {
+		tcp_socket[p] = socket(AF_INET,
 			       SOCK_STREAM,
 			       IPPROTO_TCP);
+	}
 
 	if (tcp_socket[p] == -1) {
 		LogWarn(COMPONENT_DISPATCH,
@@ -1049,11 +1091,11 @@ void nfs_Init_svc(void)
 
 	memset(&svc_params, 0, sizeof(svc_params));
 
-#ifdef __FreeBSD__
+//#ifdef __FreeBSD__
 	v6disabled = true;
-#else
-	v6disabled = false;
-#endif
+//#else
+//	v6disabled = false;
+//#endif
 #ifdef RPC_VSOCK
 	vsock = NFS_options & CORE_OPTION_NFS_VSOCK;
 #endif

@@ -1,3 +1,4 @@
 [submodule "src/libntirpc"]
 	path = src/libntirpc
-	url = https://github.com/nfs-ganesha/ntirpc.git
+	url = https://github.com/qiuyi21/ntirpc.git
+	branch = v1.6_qiuyi
