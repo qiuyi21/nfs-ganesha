@@ -39,6 +39,13 @@
 #include "log.h"
 #include "mdcache_int.h"
 
+enum fd_states {
+	FD_LOW,
+	FD_MIDDLE,
+	FD_HIGH,
+	FD_LIMIT,
+};
+
 /**
  * @file mdcache_lru.h
  * @author Matt Benjamin
@@ -81,7 +88,7 @@ struct lru_state {
 	uint32_t biggest_window;
 	uint64_t prev_fd_count;	/* previous # of open fds */
 	time_t prev_time;	/* previous time the gc thread was run. */
-	bool caching_fds;
+	uint32_t fd_state;
 };
 
 extern struct lru_state lru_state;
@@ -155,7 +162,6 @@ void mdcache_lru_cleanup_try_push(mdcache_entry_t *entry);
 						__func__, __LINE__)
 bool _mdcache_lru_unref(mdcache_entry_t *entry, uint32_t flags,
 			const char *func, int line);
-void lru_wake_thread(void);
 void mdcache_lru_kill_for_shutdown(mdcache_entry_t *entry);
 
 /**
@@ -190,17 +196,10 @@ static inline void mdcache_put(mdcache_entry_t *entry)
 	mdcache_lru_unref(entry);
 }
 
-/**
- * Return true if we are currently caching file descriptors.
- */
-
-static inline bool mdcache_lru_caching_fds(void)
-{
-	return lru_state.caching_fds;
-}
-
+void lru_reuse_chunk(mdcache_entry_t *parent, struct dir_chunk *chunk);
 void lru_remove_chunk(struct dir_chunk *chunk);
-struct dir_chunk *mdcache_get_chunk(mdcache_entry_t *parent);
+struct dir_chunk *mdcache_get_chunk(mdcache_entry_t *parent,
+				    struct dir_chunk *prev_chunk);
 void lru_bump_chunk(struct dir_chunk *chunk);
 
 #endif				/* MDCACHE_LRU_H */

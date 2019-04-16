@@ -65,6 +65,7 @@ pthread_rwlock_t export_opt_lock = PTHREAD_RWLOCK_INITIALIZER;
 #define GLOBAL_EXPORT_PERMS_INITIALIZER				\
 	.def.anonymous_uid = ANON_UID,				\
 	.def.anonymous_gid = ANON_GID,				\
+	.def.expire_time_attr = 60,				\
 	/* Note: Access_Type defaults to None on purpose */	\
 	.def.options = EXPORT_OPTION_ROOT_SQUASH |		\
 		       EXPORT_OPTION_NO_ACCESS |		\
@@ -72,8 +73,7 @@ pthread_rwlock_t export_opt_lock = PTHREAD_RWLOCK_INITIALIZER;
 		       EXPORT_OPTION_PROTO_DEFAULTS |		\
 		       EXPORT_OPTION_XPORT_DEFAULTS |		\
 		       EXPORT_OPTION_NO_DELEGATIONS,		\
-	.def.set = UINT32_MAX,					\
-	.expire_time_attr = 60,
+	.def.set = UINT32_MAX
 
 struct global_export_perms export_opt = {
 	GLOBAL_EXPORT_PERMS_INITIALIZER
@@ -96,7 +96,8 @@ static int StrExportOptions(struct display_buffer *dspbuf,
 	if (b_left <= 0)
 		return b_left;
 
-	b_left = display_printf(dspbuf, "options=%08"PRIx32, p_perms->options);
+	b_left = display_printf(dspbuf, "options=%08"PRIx32"/%08"PRIx32" ",
+				p_perms->options, p_perms->set);
 
 	if (b_left <= 0)
 		return b_left;
@@ -258,6 +259,15 @@ static int StrExportOptions(struct display_buffer *dspbuf,
 	if ((p_perms->set & EXPORT_OPTION_ANON_GID_SET) != 0)
 		b_left = display_printf(dspbuf, ", anon_gid=%6d",
 					(int)p_perms->anonymous_gid);
+	else
+		b_left = display_cat(dspbuf, ",                ");
+
+	if (b_left <= 0)
+		return b_left;
+
+	if ((p_perms->set & EXPORT_OPTION_EXPIRE_SET) != 0)
+		b_left = display_printf(dspbuf, ", expire=%8"PRIi32,
+					(int)p_perms->expire_time_attr);
 	else
 		b_left = display_cat(dspbuf, ",                ");
 
@@ -734,13 +744,6 @@ static int fsal_cfg_commit(void *node, void *link_mem, void *self_struct,
 	 * FSAL, continuing down the chain. */
 	status = mdcache_fsal_create_export(fsal, node, err_type, &fsal_up_top);
 
-	PTHREAD_RWLOCK_rdlock(&export_opt_lock);
-
-	if ((export->options_set & EXPORT_OPTION_EXPIRE_SET) == 0)
-		export->expire_time_attr = export_opt.expire_time_attr;
-
-	PTHREAD_RWLOCK_unlock(&export_opt_lock);
-
 	if (FSAL_IS_ERROR(status)) {
 		fsal_put(fsal);
 		LogCrit(COMPONENT_CONFIG,
@@ -828,13 +831,6 @@ static int fsal_update_cfg_commit(void *node, void *link_mem, void *self_struct,
 	 */
 	clean_export_paths(export);
 
-	PTHREAD_RWLOCK_rdlock(&export_opt_lock);
-
-	if ((export->options_set & EXPORT_OPTION_EXPIRE_SET) == 0)
-		export->expire_time_attr = export_opt.expire_time_attr;
-
-	PTHREAD_RWLOCK_unlock(&export_opt_lock);
-
 	/* We don't assign export->fsal_export because we don't have a new
 	 * fsal_export to later release...
 	 */
@@ -916,7 +912,7 @@ static void *export_init(void *link_mem, void *self_struct)
 			pnfs_ds_remove(export->export_id, true);
 		} else {
 			assert(export->refcnt == 0);
-			free_export(export);
+			export_cleanup(export);
 		}
 
 		return NULL;
@@ -955,7 +951,6 @@ static inline void update_atomic_fields(struct gsh_export *export,
 	atomic_store_uint64_t(&export->MaxOffsetRead, src->MaxOffsetRead);
 	atomic_store_uint32_t(&export->options, src->options);
 	atomic_store_uint32_t(&export->options_set, src->options_set);
-	atomic_store_int32_t(&export->expire_time_attr, src->expire_time_attr);
 }
 
 /**
@@ -1637,6 +1632,9 @@ static struct config_item client_params[] = {
 
 static struct config_item export_defaults_params[] = {
 	CONF_EXPORT_PERMS(global_export_perms, conf),
+	CONF_ITEM_I32_SET("Attr_Expiration_Time", -1, INT32_MAX, 60,
+		       global_export_perms, conf.expire_time_attr,
+		       EXPORT_OPTION_EXPIRE_SET, conf.set),
 	CONFIG_EOL
 };
 
@@ -1682,9 +1680,9 @@ static struct config_item fsal_params[] = {
 		       EXPORT_OPTION_FSID_SET, options_set),		\
 	CONF_ITEM_STR("Tag", 1, MAXPATHLEN, NULL,			\
 		      _struct_, FS_tag),				\
-	CONF_ITEM_UI64("MaxOffsetWrite", 512, UINT64_MAX, UINT64_MAX,	\
+	CONF_ITEM_UI64("MaxOffsetWrite", 512, UINT64_MAX, INT64_MAX,	\
 		       _struct_, MaxOffsetWrite),			\
-	CONF_ITEM_UI64("MaxOffsetRead", 512, UINT64_MAX, UINT64_MAX,	\
+	CONF_ITEM_UI64("MaxOffsetRead", 512, UINT64_MAX, INT64_MAX,	\
 		       _struct_, MaxOffsetRead),			\
 	CONF_ITEM_BOOLBIT_SET("UseCookieVerifier",			\
 		false, EXPORT_OPTION_USE_COOKIE_VERIFIER,		\
@@ -1697,10 +1695,7 @@ static struct config_item fsal_params[] = {
 		_struct_, options, options_set),			\
 	CONF_ITEM_BOOLBIT_SET("Disable_ACL",				\
 		false, EXPORT_OPTION_DISABLE_ACL,			\
-		_struct_, options, options_set),			\
-	CONF_ITEM_I32_SET("Attr_Expiration_Time", -1, INT32_MAX, 60,	\
-		       _struct_, expire_time_attr,			\
-		       EXPORT_OPTION_EXPIRE_SET, options_set)
+		_struct_, options, options_set)
 
 /**
  * @brief Table of EXPORT block parameters
@@ -1709,6 +1704,9 @@ static struct config_item fsal_params[] = {
 static struct config_item export_params[] = {
 	CONF_EXPORT_PARAMS(gsh_export),
 	CONF_EXPORT_PERMS(gsh_export, export_perms),
+	CONF_ITEM_I32_SET("Attr_Expiration_Time", -1, INT32_MAX, 60,
+		       gsh_export, export_perms.expire_time_attr,
+		       EXPORT_OPTION_EXPIRE_SET, export_perms.set),
 
 	/* NOTE: the Client and FSAL sub-blocks must be the *last*
 	 * two entries in the list.  This is so all other
@@ -1731,6 +1729,9 @@ static struct config_item export_params[] = {
 static struct config_item export_update_params[] = {
 	CONF_EXPORT_PARAMS(gsh_export),
 	CONF_EXPORT_PERMS(gsh_export, export_perms),
+	CONF_ITEM_I32_SET("Attr_Expiration_Time", -1, INT32_MAX, 60,
+		       gsh_export, export_perms.expire_time_attr,
+		       EXPORT_OPTION_EXPIRE_SET, export_perms.set),
 
 	/* NOTE: the Client and FSAL sub-blocks must be the *last*
 	 * two entries in the list.  This is so all other
@@ -2047,15 +2048,26 @@ static void FreeClientList(struct glist_head *clients)
 		client =
 		    glist_entry(glist, exportlist_client_entry_t, cle_list);
 		glist_del(&client->cle_list);
-		if (client->type == NETGROUP_CLIENT &&
-		    client->client.netgroup.netgroupname != NULL)
+		switch (client->type) {
+		case NETWORK_CLIENT:
+			if (client->client.network.cidr != NULL)
+				cidr_free(client->client.network.cidr);
+			break;
+		case NETGROUP_CLIENT:
 			gsh_free(client->client.netgroup.netgroupname);
-		if (client->type == WILDCARDHOST_CLIENT &&
-		    client->client.wildcard.wildcard != NULL)
+			break;
+		case WILDCARDHOST_CLIENT:
 			gsh_free(client->client.wildcard.wildcard);
-		if (client->type == GSSPRINCIPAL_CLIENT &&
-		    client->client.gssprinc.princname != NULL)
+			break;
+		case GSSPRINCIPAL_CLIENT:
 			gsh_free(client->client.gssprinc.princname);
+			break;
+		case PROTO_CLIENT:
+		case MATCH_ANY_CLIENT:
+		case BAD_CLIENT:
+			/* Do nothing for these client types */
+			break;
+		}
 		gsh_free(client);
 	}
 }
@@ -2149,7 +2161,7 @@ fsal_status_t nfs_export_get_root_entry(struct gsh_export *export,
 	PTHREAD_RWLOCK_rdlock(&export->lock);
 
 	if (export->exp_root_obj)
-		export->exp_root_obj->obj_ops.get_ref(export->exp_root_obj);
+		export->exp_root_obj->obj_ops->get_ref(export->exp_root_obj);
 
 	PTHREAD_RWLOCK_unlock(&export->lock);
 
@@ -2331,7 +2343,7 @@ static void release_export(struct gsh_export *export)
 	PTHREAD_RWLOCK_wrlock(&export->lock);
 
 	glist_del(&export->exp_root_list);
-	export->exp_root_obj->obj_ops.put_ref(export->exp_root_obj);
+	export->exp_root_obj->obj_ops->put_ref(export->exp_root_obj);
 	export->exp_root_obj = NULL;
 
 	(void) atomic_dec_int32_t(&obj->state_hdl->dir.exp_root_refcount);
@@ -2360,7 +2372,7 @@ static void release_export(struct gsh_export *export)
 	remove_gsh_export(export->export_id);
 
 	/* Release ref taken above */
-	obj->obj_ops.put_ref(obj);
+	obj->obj_ops->put_ref(obj);
 }
 
 void unexport(struct gsh_export *export)
@@ -2828,6 +2840,12 @@ void export_check_access(void)
 		op_ctx->export_perms->anonymous_gid =
 			op_ctx->ctx_export->export_perms.anonymous_gid;
 
+	if ((op_ctx->export_perms->set & EXPORT_OPTION_EXPIRE_SET) == 0 &&
+	    (op_ctx->ctx_export->export_perms.set &
+	     EXPORT_OPTION_EXPIRE_SET) != 0)
+		op_ctx->export_perms->expire_time_attr =
+			op_ctx->ctx_export->export_perms.expire_time_attr;
+
 	op_ctx->export_perms->set |= op_ctx->ctx_export->export_perms.set;
 
  no_export:
@@ -2851,6 +2869,11 @@ void export_check_access(void)
 		op_ctx->export_perms->anonymous_gid =
 					export_opt.conf.anonymous_gid;
 
+	if ((op_ctx->export_perms->set & EXPORT_OPTION_EXPIRE_SET) == 0 &&
+	    (export_opt.conf.set & EXPORT_OPTION_EXPIRE_SET) != 0)
+		op_ctx->export_perms->expire_time_attr =
+			export_opt.conf.expire_time_attr;
+
 	op_ctx->export_perms->set |= export_opt.conf.set;
 
 	/* And finally take any options not yet set from global defaults */
@@ -2864,6 +2887,10 @@ void export_check_access(void)
 	if ((op_ctx->export_perms->set & EXPORT_OPTION_ANON_GID_SET) == 0)
 		op_ctx->export_perms->anonymous_gid =
 					export_opt.def.anonymous_gid;
+
+	if ((op_ctx->export_perms->set & EXPORT_OPTION_EXPIRE_SET) == 0)
+		op_ctx->export_perms->expire_time_attr =
+					export_opt.def.expire_time_attr;
 
 	op_ctx->export_perms->set |= export_opt.def.set;
 

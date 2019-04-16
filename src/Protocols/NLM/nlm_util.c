@@ -263,6 +263,8 @@ int nlm_process_parameters(struct svc_req *req, bool exclusive,
 	nfsstat3 nfsstat3;
 	SVCXPRT *ptr_svc = req->rq_xprt;
 	int rc;
+	uint64_t maxfilesize =
+	    op_ctx->fsal_export->exp_ops.fs_maxfilesize(op_ctx->fsal_export);
 
 	*ppnsm_client = NULL;
 	*ppnlm_client = NULL;
@@ -270,6 +272,11 @@ int nlm_process_parameters(struct svc_req *req, bool exclusive,
 
 	if (state != NULL)
 		*state = NULL;
+
+	if (alock->l_offset > maxfilesize) {
+		/* Offset larger than max file size */
+		return NLM4_FBIG;
+	}
 
 	/* Convert file handle into a fsal object */
 	*ppobj = nfs3_FhandleToCache((struct nfs_fh3 *)&alock->fh,
@@ -365,13 +372,25 @@ int nlm_process_parameters(struct svc_req *req, bool exclusive,
 	plock->lock_start = alock->l_offset;
 	plock->lock_length = alock->l_len;
 
+	/* Check for range overflow past maxfilesize.  Comparing beyond 2^64 is
+	 * not possible in 64 bits precision, but off+len > maxfilesize is
+	 * equivalent to len > maxfilesize - off
+	 */
+	if (alock->l_len > (maxfilesize - alock->l_offset)) {
+		/* Fix up lock length to 0 - end of file */
+		LogFullDebug(COMPONENT_NLM,
+			     "Converting lock length %"PRIx64" to 0",
+			     alock->l_len);
+		plock->lock_length = 0;
+	}
+
 	LogFullDebug(COMPONENT_NLM, "Parameters Processed");
 
 	return -1;
 
  out_put:
 
-	(*ppobj)->obj_ops.put_ref((*ppobj));
+	(*ppobj)->obj_ops->put_ref((*ppobj));
 
 	if (*ppnsm_client != NULL) {
 		dec_nsm_client_ref(*ppnsm_client);
@@ -502,7 +521,7 @@ int nlm_process_share_parms(struct svc_req *req, nlm4_share *share,
 		*ppowner = NULL;
 	}
 
-	(*ppobj)->obj_ops.put_ref((*ppobj));
+	(*ppobj)->obj_ops->put_ref((*ppobj));
 	*ppobj = NULL;
 	return rc;
 }

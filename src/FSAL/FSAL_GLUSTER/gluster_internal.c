@@ -26,7 +26,7 @@
  */
 
 #include <sys/types.h>
-#include <attr/xattr.h> /* ENOATTR */
+#include "os/xattr.h"
 #include "gluster_internal.h"
 #include "fsal_api.h"
 #include "fsal_convert.h"
@@ -160,7 +160,7 @@ void construct_handle(struct glusterfs_export *glexport, const struct stat *st,
 			     posix2fsal_type(st->st_mode));
 	constructing->handle.fsid = posix2fsal_fsid(st->st_dev);
 	constructing->handle.fileid = st->st_ino;
-	handle_ops_init(&constructing->handle.obj_ops);
+	constructing->handle.obj_ops = &GlusterFS.handle_ops;
 
 	*obj = constructing;
 }

@@ -164,6 +164,23 @@ static inline uint16_t eid_cache_offsetof(uint16_t k)
 }
 
 /**
+ * @brief Clean up an export
+ *
+ * This is used when an export needs to be freed but op_ctx isn't set up.
+ *
+ * @param[in] export	Export to clean up
+ */
+void export_cleanup(struct gsh_export *export)
+{
+	struct root_op_context ctx;
+
+	init_root_op_context(&ctx, export, export->fsal_export, 0, 0,
+			     UNKNOWN_REQUEST);
+	free_export(export);
+	release_root_op_context();
+}
+
+/**
  * @brief Revert export_commit()
  *
  * @param export [in] the export just inserted/committed
@@ -173,6 +190,7 @@ void export_revert(struct gsh_export *export)
 	struct avltree_node *cnode;
 	void **cache_slot = (void **)
 	     &(export_by_id.cache[eid_cache_offsetof(export->export_id)]);
+	struct root_op_context ctx;
 
 	PTHREAD_RWLOCK_wrlock(&export_by_id.lock);
 
@@ -185,12 +203,17 @@ void export_revert(struct gsh_export *export)
 
 	PTHREAD_RWLOCK_unlock(&export_by_id.lock);
 
+	init_root_op_context(&ctx, export, export->fsal_export, 0, 0,
+			     UNKNOWN_REQUEST);
+
 	if (export->has_pnfs_ds) {
 		/* once-only, so no need for lock here */
 		export->has_pnfs_ds = false;
 		pnfs_ds_remove(export->export_id, true);
 	}
 	put_gsh_export(export); /* Release sentinel ref */
+
+	release_root_op_context();
 }
 
 /**
@@ -1191,6 +1214,89 @@ static struct gsh_dbus_method export_remove_export = {
 	.name = "tag",		\
 	.type = "s",		\
 	.direction = "out"	\
+},				\
+{				\
+	.name = "clients",	\
+	.type = "a(siyyiuuuuu)",\
+	.direction = "out",	\
+}
+
+static void client_of_export(exportlist_client_entry_t *client, void *state)
+{
+	struct showexports_state *client_array_iter =
+		(struct showexports_state *)state;
+	DBusMessageIter client_struct_iter;
+	const char *grp_name;
+
+	switch (client->type) {
+	case NETWORK_CLIENT:
+		grp_name = cidr_to_str(client->client.network.cidr,
+				CIDR_NOFLAGS);
+		if (grp_name == NULL) {
+			grp_name = "Invalid Network Address";
+		}
+		break;
+	case NETGROUP_CLIENT:
+		grp_name = client->client.netgroup.netgroupname;
+		break;
+	case GSSPRINCIPAL_CLIENT:
+		grp_name = client->client.gssprinc.princname;
+		break;
+	case MATCH_ANY_CLIENT:
+		grp_name = "*";
+		break;
+	case WILDCARDHOST_CLIENT:
+		grp_name = client->client.wildcard.wildcard;
+		break;
+	default:
+		grp_name = "<unknown>";
+	}
+	dbus_message_iter_open_container(&client_array_iter->export_iter,
+					 DBUS_TYPE_STRUCT, NULL,
+					 &client_struct_iter);
+	// Client type
+	dbus_message_iter_append_basic(&client_struct_iter, DBUS_TYPE_STRING,
+				       &grp_name);
+	// Client Cidr block
+	if (client->type == NETWORK_CLIENT) {
+		dbus_message_iter_append_basic(&client_struct_iter,
+					DBUS_TYPE_INT32,
+					&client->client.network.cidr->version);
+		dbus_message_iter_append_basic(&client_struct_iter,
+					DBUS_TYPE_BYTE,
+					&client->client.network.cidr->addr);
+		dbus_message_iter_append_basic(&client_struct_iter,
+					DBUS_TYPE_BYTE,
+					&client->client.network.cidr->mask);
+		dbus_message_iter_append_basic(&client_struct_iter,
+					DBUS_TYPE_INT32,
+					&client->client.network.cidr->proto);
+	} else {
+		int dummy_val1 = 0;
+		uint8_t dummy_val2 = 0;
+
+		dbus_message_iter_append_basic(&client_struct_iter,
+					       DBUS_TYPE_INT32, &dummy_val1);
+		dbus_message_iter_append_basic(&client_struct_iter,
+					       DBUS_TYPE_BYTE, &dummy_val2);
+		dbus_message_iter_append_basic(&client_struct_iter,
+					       DBUS_TYPE_BYTE, &dummy_val2);
+		dbus_message_iter_append_basic(&client_struct_iter,
+					       DBUS_TYPE_INT32, &dummy_val1);
+	}
+	// Client Export Permissions
+	dbus_message_iter_append_basic(&client_struct_iter, DBUS_TYPE_UINT32,
+				       &client->client_perms.anonymous_uid);
+	dbus_message_iter_append_basic(&client_struct_iter, DBUS_TYPE_UINT32,
+				       &client->client_perms.anonymous_gid);
+	dbus_message_iter_append_basic(&client_struct_iter, DBUS_TYPE_UINT32,
+				       &client->client_perms.expire_time_attr);
+	dbus_message_iter_append_basic(&client_struct_iter, DBUS_TYPE_UINT32,
+				       &client->client_perms.options);
+	dbus_message_iter_append_basic(&client_struct_iter, DBUS_TYPE_UINT32,
+				       &client->client_perms.set);
+	dbus_message_iter_close_container(&client_array_iter->export_iter,
+					  &client_struct_iter);
 }
 
 /**
@@ -1210,6 +1316,8 @@ static bool gsh_export_displayexport(DBusMessageIter *args,
 	char *errormsg;
 	bool rc = true;
 	char *path;
+	struct showexports_state client_array_iter;
+	struct glist_head *glist;
 
 	export = lookup_export(args, &errormsg);
 	if (export == NULL) {
@@ -1239,6 +1347,20 @@ static bool gsh_export_displayexport(DBusMessageIter *args,
 	dbus_message_iter_append_basic(&iter,
 				       DBUS_TYPE_STRING,
 				       &path);
+	dbus_message_iter_open_container(&iter, DBUS_TYPE_ARRAY,
+					 "(siyyiuuuuu)",
+					 &client_array_iter.export_iter);
+	PTHREAD_RWLOCK_rdlock(&export->lock);
+	glist_for_each(glist, &export->clients) {
+		exportlist_client_entry_t *client;
+
+		client = glist_entry(glist, exportlist_client_entry_t,
+				     cle_list);
+		client_of_export(client, (void *)&client_array_iter);
+	}
+	PTHREAD_RWLOCK_unlock(&export->lock);
+	dbus_message_iter_close_container(&iter,
+					  &client_array_iter.export_iter);
 
 	put_gsh_export(export);
 

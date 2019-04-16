@@ -41,7 +41,7 @@
 
 /* filesystem info for PROXY */
 static struct fsal_staticfsinfo_t proxy_info = {
-	.maxfilesize = UINT64_MAX,
+	.maxfilesize = INT64_MAX,
 	.maxlink = _POSIX_LINK_MAX,
 	.maxnamelen = 1024,
 	.maxpathlen = 1024,
@@ -220,7 +220,7 @@ static fsal_status_t pxy_init_config(struct fsal_module *fsal_hdl,
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
 
-static struct pxy_fsal_module PROXY;
+struct pxy_fsal_module PROXY;
 
 MODULE_INIT void pxy_init(void)
 {
@@ -229,6 +229,9 @@ MODULE_INIT void pxy_init(void)
 		return;
 	PROXY.module.m_ops.init_config = pxy_init_config;
 	PROXY.module.m_ops.create_export = pxy_create_export;
+
+	/* Initialize the fsal_obj_handle ops for FSAL PROXY */
+	pxy_handle_ops_init(&PROXY.handle_ops);
 }
 
 MODULE_FINI void pxy_unload(void)

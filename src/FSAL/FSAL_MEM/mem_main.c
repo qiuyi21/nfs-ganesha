@@ -52,7 +52,7 @@ const char memname[] = "MEM";
 
 /* filesystem info for MEM */
 static struct fsal_staticfsinfo_t default_mem_info = {
-	.maxfilesize = UINT64_MAX,
+	.maxfilesize = INT64_MAX,
 	.maxlink = 0,
 	.maxnamelen = MAXNAMLEN,
 	.maxpathlen = MAXPATHLEN,
@@ -189,6 +189,9 @@ MODULE_INIT void init(void)
 	myself->m_ops.init_config = mem_init_config;
 	glist_init(&MEM.mem_exports);
 	MEM.next_inode = 0xc0ffee;
+
+	/* Initialize the fsal_obj_handle ops for FSAL MEM */
+	mem_handle_ops_init(&MEM.handle_ops);
 }
 
 MODULE_FINI void finish(void)

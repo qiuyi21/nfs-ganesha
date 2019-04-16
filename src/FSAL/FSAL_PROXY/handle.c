@@ -1506,7 +1506,7 @@ static fsal_status_t pxy_mkdir(struct fsal_obj_handle *dir_hdl,
 	if (FSAL_IS_ERROR(st))
 		return st;
 
-	return (*handle)->obj_ops.getattrs(*handle, attrib);
+	return (*handle)->obj_ops->getattrs(*handle, attrib);
 }
 
 static fsal_status_t pxy_mknod(struct fsal_obj_handle *dir_hdl,
@@ -1592,7 +1592,7 @@ static fsal_status_t pxy_mknod(struct fsal_obj_handle *dir_hdl,
 	if (FSAL_IS_ERROR(st))
 		return st;
 
-	return (*handle)->obj_ops.getattrs(*handle, attrib);
+	return (*handle)->obj_ops->getattrs(*handle, attrib);
 }
 
 static fsal_status_t pxy_symlink(struct fsal_obj_handle *dir_hdl,
@@ -1656,7 +1656,7 @@ static fsal_status_t pxy_symlink(struct fsal_obj_handle *dir_hdl,
 	if (FSAL_IS_ERROR(st))
 		return st;
 
-	return (*handle)->obj_ops.getattrs(*handle, attrib);
+	return (*handle)->obj_ops->getattrs(*handle, attrib);
 }
 
 static fsal_status_t pxy_readlink(struct fsal_obj_handle *obj_hdl,
@@ -1739,9 +1739,19 @@ static fsal_status_t pxy_link(struct fsal_obj_handle *obj_hdl,
 	return nfsstat4_to_fsal(rc);
 }
 
+#define FSAL_READDIR_NB_OP_ALLOC 3 /* SEQUENCE PUTFH READDIR */
 static bool xdr_readdirres(XDR *x, nfs_resop4 *rdres)
 {
-	return xdr_nfs_resop4(x, rdres) && xdr_nfs_resop4(x, rdres + 1);
+	int i;
+	int res = true;
+
+	for (i = 0; i < FSAL_READDIR_NB_OP_ALLOC; i++) {
+		res  = xdr_nfs_resop4(x, rdres + i);
+		if (res != true)
+			return res;
+	}
+
+	return res;
 }
 
 /*
@@ -1760,7 +1770,6 @@ static fsal_status_t pxy_do_readdir(struct pxy_obj_handle *ph,
 	int rc;
 	entry4 *e4;
 	sessionid4 sid;
-#define FSAL_READDIR_NB_OP_ALLOC 3 /* SEQUENCE PUTFH READDIR */
 	nfs_argop4 argoparray[FSAL_READDIR_NB_OP_ALLOC];
 	nfs_resop4 resoparray[FSAL_READDIR_NB_OP_ALLOC];
 	READDIR4resok *rdok;
@@ -2735,6 +2744,8 @@ static fsal_status_t pxy_commit2(struct fsal_obj_handle *obj_hdl,
 
 void pxy_handle_ops_init(struct fsal_obj_ops *ops)
 {
+	fsal_default_obj_ops_init(ops);
+
 	ops->release = pxy_hdl_release;
 	ops->lookup = pxy_lookup;
 	ops->readdir = pxy_readdir;
@@ -2841,7 +2852,7 @@ static struct pxy_obj_handle *pxy_alloc_handle(struct fsal_export *exp,
 	n->obj.state_hdl = NULL;
 	n->obj.fsid = attributes.fsid;
 	n->obj.fileid = attributes.fileid;
-	pxy_handle_ops_init(&n->obj.obj_ops);
+	n->obj.obj_ops = &PROXY.handle_ops;
 	if (attrs_out != NULL) {
 		/* We aren't keeping ACL ref ourself, so pass it
 		 * to the caller.

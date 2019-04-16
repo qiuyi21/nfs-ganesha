@@ -34,7 +34,7 @@
 #cmakedefine _VALGRIND_MEMCHECK 1
 #cmakedefine _NO_MOUNT_LIST 1
 #cmakedefine _NO_TCP_REGISTER 1
-#cmakedefine _NO_PORTMAPPER 1
+#cmakedefine RPCBIND 1
 #cmakedefine HAVE_STDBOOL_H 1
 #cmakedefine HAVE_KRB5 1
 #cmakedefine KRB5_VERSION @KRB5_VERSION@
@@ -49,7 +49,7 @@
 #cmakedefine HAVE_STRNLEN 1
 #cmakedefine LITTLEEND 1
 #cmakedefine BIGEND 1
-#cmakedefine HAVE_XATTR_H 1
+#cmakedefine HAVE_SYS_XATTR_H 1
 #cmakedefine HAVE_DAEMON 1
 #cmakedefine USE_LTTNG 1
 #cmakedefine ENABLE_VFS_DEBUG_ACL 1
@@ -62,6 +62,7 @@
 #cmakedefine USE_FSAL_CEPH_LL_LOOKUP_ROOT 1
 #cmakedefine USE_FSAL_CEPH_STATX 1
 #cmakedefine USE_FSAL_CEPH_LL_DELEGATION 1
+#cmakedefine USE_FSAL_CEPH_LL_SYNC_INODE 1
 #cmakedefine USE_FSAL_RGW_MOUNT2 1
 #cmakedefine ENABLE_LOCKTRACE 1
 #cmakedefine SANITIZE_ADDRESS 1

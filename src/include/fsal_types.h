@@ -87,14 +87,22 @@ struct user_cred {
 };
 
 struct export_perms {
-	uid_t anonymous_uid;	/* root uid when no root access is available
-				 * uid when access is available but all users
-				 * are being squashed. */
-	gid_t anonymous_gid;	/* root gid when no root access is available
-				 * gid when access is available but all users
-				 * are being squashed. */
-	uint32_t options;	/* available export options */
-	uint32_t set;		/* Options that have been set */
+	/** root uid when no root access is available uid when access is
+	 *  available but all users are being squashed.
+	 */
+	uid_t anonymous_uid;
+	/** root gid when no root access is available gid when access is
+	 *  available but all users are being squashed.
+	 */
+	gid_t anonymous_gid;
+	/** Expiration time interval in seconds for attributes.  Settable with
+	    Attr_Expiration_Time (should never be set for client export_perms.
+	 */
+	int32_t  expire_time_attr;
+	/** available export options */
+	uint32_t options;
+	/** Permission Options that have been set */
+	uint32_t set;
 };
 
 /* Define bit values for cred_flags */
@@ -640,6 +648,7 @@ typedef enum enum_fsal_fsinfo_options {
 	fso_rename_changes_key,
 	fso_compute_readdir_cookie,
 	fso_whence_is_name,
+	fso_readdir_plus,
 } fsal_fsinfo_options_t;
 
 /* The largest maxread and maxwrite value */
@@ -688,6 +697,7 @@ typedef struct fsal_staticfsinfo_t {
 	bool rename_changes_key;/*< Handle key is changed across rename */
 	bool compute_readdir_cookie;
 	bool whence_is_name;
+	bool readdir_plus;	/*< FSAL supports readdir_plus */
 } fsal_staticfsinfo_t;
 
 /**

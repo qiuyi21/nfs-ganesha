@@ -273,14 +273,14 @@ static fsal_status_t ceph_fsal_mkdir(struct fsal_obj_handle *dir_hdl,
 		/* Now per support_ex API, if there are any other attributes
 		 * set, go ahead and get them set now.
 		 */
-		status = (*new_obj)->obj_ops.setattr2(*new_obj, false, NULL,
+		status = (*new_obj)->obj_ops->setattr2(*new_obj, false, NULL,
 						      attrib);
 		if (FSAL_IS_ERROR(status)) {
 			/* Release the handle we just allocated. */
 			LogFullDebug(COMPONENT_FSAL,
 				     "setattr2 status=%s",
 				     fsal_err_txt(status));
-			(*new_obj)->obj_ops.release(*new_obj);
+			(*new_obj)->obj_ops->release(*new_obj);
 			*new_obj = NULL;
 		}
 	} else {
@@ -386,14 +386,14 @@ static fsal_status_t ceph_fsal_mknode(struct fsal_obj_handle *dir_hdl,
 		/* Now per support_ex API, if there are any other attributes
 		 * set, go ahead and get them set now.
 		 */
-		status = (*new_obj)->obj_ops.setattr2(*new_obj, false, NULL,
+		status = (*new_obj)->obj_ops->setattr2(*new_obj, false, NULL,
 						      attrib);
 		if (FSAL_IS_ERROR(status)) {
 			/* Release the handle we just allocated. */
 			LogFullDebug(COMPONENT_FSAL,
 				     "setattr2 status=%s",
 				     fsal_err_txt(status));
-			(*new_obj)->obj_ops.release(*new_obj);
+			(*new_obj)->obj_ops->release(*new_obj);
 			*new_obj = NULL;
 		}
 	} else {
@@ -472,14 +472,14 @@ static fsal_status_t ceph_fsal_symlink(struct fsal_obj_handle *dir_hdl,
 		/* Now per support_ex API, if there are any other attributes
 		 * set, go ahead and get them set now.
 		 */
-		status = (*new_obj)->obj_ops.setattr2(*new_obj, false, NULL,
+		status = (*new_obj)->obj_ops->setattr2(*new_obj, false, NULL,
 						      attrib);
 		if (FSAL_IS_ERROR(status)) {
 			/* Release the handle we just allocated. */
 			LogFullDebug(COMPONENT_FSAL,
 				     "setattr2 status=%s",
 				     fsal_err_txt(status));
-			(*new_obj)->obj_ops.release(*new_obj);
+			(*new_obj)->obj_ops->release(*new_obj);
 			*new_obj = NULL;
 		}
 	} else {
@@ -649,8 +649,15 @@ static fsal_status_t ceph_fsal_rename(struct fsal_obj_handle *obj_hdl,
 
 	rc = fsal_ceph_ll_rename(export->cmount, olddir->i, old_name,
 					newdir->i, new_name, op_ctx->creds);
-	if (rc < 0)
+	if (rc < 0) {
+		/*
+		 * RFC5661, section 18.26.3 - renaming on top of a non-empty
+		 * directory should return NFS4ERR_EXIST.
+		 */
+		if (rc == -ENOTEMPTY)
+			rc = -EEXIST;
 		return ceph2fsal_error(rc);
+	}
 
 	return fsalstat(ERR_FSAL_NO_ERROR, 0);
 }
@@ -1186,7 +1193,7 @@ fsal_status_t ceph_open2(struct fsal_obj_handle *obj_hdl,
 		struct fsal_obj_handle *temp = NULL;
 
 		/* We don't have open by name... */
-		status = obj_hdl->obj_ops.lookup(obj_hdl, name, &temp, NULL);
+		status = obj_hdl->obj_ops->lookup(obj_hdl, name, &temp, NULL);
 
 		if (FSAL_IS_ERROR(status)) {
 			LogFullDebug(COMPONENT_FSAL,
@@ -1196,7 +1203,7 @@ fsal_status_t ceph_open2(struct fsal_obj_handle *obj_hdl,
 		}
 
 		/* Now call ourselves without name and attributes to open. */
-		status = obj_hdl->obj_ops.open2(temp, state, openflags,
+		status = obj_hdl->obj_ops->open2(temp, state, openflags,
 						FSAL_NO_CREATE, NULL, NULL,
 						verifier, new_obj,
 						attrs_out,
@@ -1204,7 +1211,7 @@ fsal_status_t ceph_open2(struct fsal_obj_handle *obj_hdl,
 
 		if (FSAL_IS_ERROR(status)) {
 			/* Release the object we found by lookup. */
-			temp->obj_ops.release(temp);
+			temp->obj_ops->release(temp);
 			LogFullDebug(COMPONENT_FSAL,
 				     "open returned %s",
 				     fsal_err_txt(status));
@@ -1325,7 +1332,7 @@ fsal_status_t ceph_open2(struct fsal_obj_handle *obj_hdl,
 		 * Note that we only set the attributes if we were responsible
 		 * for creating the file and we have attributes to set.
 		 */
-		status = (*new_obj)->obj_ops.setattr2(*new_obj,
+		status = (*new_obj)->obj_ops->setattr2(*new_obj,
 						      false,
 						      state,
 						      attrib_set);
@@ -1334,7 +1341,7 @@ fsal_status_t ceph_open2(struct fsal_obj_handle *obj_hdl,
 			goto fileerr;
 
 		if (attrs_out != NULL) {
-			status = (*new_obj)->obj_ops.getattrs(*new_obj,
+			status = (*new_obj)->obj_ops->getattrs(*new_obj,
 							      attrs_out);
 			if (FSAL_IS_ERROR(status) &&
 			    (attrs_out->request_mask & ATTR_RDATTR_ERR) == 0) {
@@ -1377,7 +1384,7 @@ fsal_status_t ceph_open2(struct fsal_obj_handle *obj_hdl,
 				my_fd);
 
 	/* Release the handle we just allocated. */
-	(*new_obj)->obj_ops.release(*new_obj);
+	(*new_obj)->obj_ops->release(*new_obj);
 	*new_obj = NULL;
 
 	if (created) {
@@ -2350,6 +2357,8 @@ static void handle_to_key(struct fsal_obj_handle *handle_pub,
 
 void handle_ops_init(struct fsal_obj_ops *ops)
 {
+	fsal_default_obj_ops_init(ops);
+
 	ops->release = release;
 	ops->merge = ceph_merge;
 	ops->lookup = lookup;

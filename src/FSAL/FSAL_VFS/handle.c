@@ -86,6 +86,8 @@ struct vfs_fsal_obj_handle *alloc_handle(int dirfd,
 	struct vfs_fsal_export *myself =
 	    container_of(exp_hdl, struct vfs_fsal_export, export);
 	struct vfs_fsal_obj_handle *hdl;
+	struct vfs_fsal_module *my_module = container_of(
+			exp_hdl->fsal, struct vfs_fsal_module, module);
 
 	hdl = vfs_sub_alloc_handle();
 
@@ -144,7 +146,7 @@ struct vfs_fsal_obj_handle *alloc_handle(int dirfd,
 #ifdef VFS_NO_MDCACHE
 	hdl->obj_handle.state_hdl = vfs_state_locate(&hdl->obj_handle);
 #endif /* VFS_NO_MDCACHE */
-	vfs_handle_ops_init(&hdl->obj_handle.obj_ops);
+	hdl->obj_handle.obj_ops = &my_module->handle_ops;
 	if (vfs_sub_init_handle(myself, hdl, path) < 0)
 		goto spcerr;
 
@@ -419,7 +421,7 @@ static fsal_status_t lookup(struct fsal_obj_handle *parent,
 	*handle = NULL;		/* poison it first */
 	parent_hdl =
 	    container_of(parent, struct vfs_fsal_obj_handle, obj_handle);
-	if (!parent->obj_ops.handle_is(parent, DIRECTORY)) {
+	if (!parent->obj_ops->handle_is(parent, DIRECTORY)) {
 		LogCrit(COMPONENT_FSAL,
 			"Parent handle is not a directory. hdl = 0x%p", parent);
 		return fsalstat(ERR_FSAL_NOTDIR, 0);
@@ -474,7 +476,7 @@ static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
 	LogDebug(COMPONENT_FSAL, "create %s", name);
 
 	*handle = NULL;		/* poison it */
-	if (!dir_hdl->obj_ops.handle_is(dir_hdl, DIRECTORY)) {
+	if (!dir_hdl->obj_ops->handle_is(dir_hdl, DIRECTORY)) {
 		LogCrit(COMPONENT_FSAL,
 			"Parent handle is not a directory. hdl = 0x%p",
 			dir_hdl);
@@ -495,14 +497,14 @@ static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
 #ifdef ENABLE_VFS_DEBUG_ACL
 	access_type = FSAL_MODE_MASK_SET(FSAL_W_OK) |
 		FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_ADD_SUBDIRECTORY);
-	status = dir_hdl->obj_ops.test_access(dir_hdl, access_type, NULL, NULL,
+	status = dir_hdl->obj_ops->test_access(dir_hdl, access_type, NULL, NULL,
 					      false);
 	if (FSAL_IS_ERROR(status))
 		return status;
 
 	fsal_prepare_attrs(&attrs, ATTR_ACL);
 
-	status = dir_hdl->obj_ops.getattrs(dir_hdl, &attrs);
+	status = dir_hdl->obj_ops->getattrs(dir_hdl, &attrs);
 
 	if (FSAL_IS_ERROR(status))
 		return status;
@@ -588,17 +590,17 @@ static fsal_status_t makedir(struct fsal_obj_handle *dir_hdl,
 		/* Now per support_ex API, if there are any other attributes
 		 * set, go ahead and get them set now.
 		 */
-		status = (*handle)->obj_ops.setattr2(*handle, false, NULL,
+		status = (*handle)->obj_ops->setattr2(*handle, false, NULL,
 						     attrib);
 		if (FSAL_IS_ERROR(status)) {
 			/* Release the handle we just allocated. */
 			LogFullDebug(COMPONENT_FSAL,
 				     "setattr2 status=%s",
 				     fsal_err_txt(status));
-			(*handle)->obj_ops.release(*handle);
+			(*handle)->obj_ops->release(*handle);
 			*handle = NULL;
 		} else if (attrs_out != NULL) {
-			status = (*handle)->obj_ops.getattrs(*handle,
+			status = (*handle)->obj_ops->getattrs(*handle,
 							     attrs_out);
 			if (FSAL_IS_ERROR(status) &&
 			    (attrs_out->request_mask & ATTR_RDATTR_ERR) == 0) {
@@ -660,7 +662,7 @@ static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
 	LogDebug(COMPONENT_FSAL, "create %s", name);
 
 	*handle = NULL;		/* poison it */
-	if (!dir_hdl->obj_ops.handle_is(dir_hdl, DIRECTORY)) {
+	if (!dir_hdl->obj_ops->handle_is(dir_hdl, DIRECTORY)) {
 		LogCrit(COMPONENT_FSAL,
 			"Parent handle is not a directory. hdl = 0x%p",
 			dir_hdl);
@@ -673,7 +675,7 @@ static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
 #ifdef ENABLE_VFS_DEBUG_ACL
 	fsal_prepare_attrs(&attrs, ATTR_ACL);
 
-	status = dir_hdl->obj_ops.getattrs(dir_hdl, &attrs);
+	status = dir_hdl->obj_ops->getattrs(dir_hdl, &attrs);
 
 	if (FSAL_IS_ERROR(status))
 		return status;
@@ -702,7 +704,7 @@ static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
 #ifdef ENABLE_VFS_DEBUG_ACL
 	access_type = FSAL_MODE_MASK_SET(FSAL_W_OK) |
 		FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_ADD_FILE);
-	status = dir_hdl->obj_ops.test_access(dir_hdl, access_type, NULL, NULL,
+	status = dir_hdl->obj_ops->test_access(dir_hdl, access_type, NULL, NULL,
 					      false);
 	if (FSAL_IS_ERROR(status))
 		return status;
@@ -795,14 +797,14 @@ static fsal_status_t makenode(struct fsal_obj_handle *dir_hdl,
 		/* Now per support_ex API, if there are any other attributes
 		 * set, go ahead and get them set now.
 		 */
-		status = (*handle)->obj_ops.setattr2(*handle, false, NULL,
+		status = (*handle)->obj_ops->setattr2(*handle, false, NULL,
 						     attrib);
 		if (FSAL_IS_ERROR(status)) {
 			/* Release the handle we just allocated. */
-			(*handle)->obj_ops.release(*handle);
+			(*handle)->obj_ops->release(*handle);
 			*handle = NULL;
 		} else if (attrs_out != NULL) {
-			status = (*handle)->obj_ops.getattrs(*handle,
+			status = (*handle)->obj_ops->getattrs(*handle,
 							     attrs_out);
 			if (FSAL_IS_ERROR(status) &&
 			    (attrs_out->request_mask & ATTR_RDATTR_ERR) == 0) {
@@ -871,7 +873,7 @@ static fsal_status_t makesymlink(struct fsal_obj_handle *dir_hdl,
 	LogDebug(COMPONENT_FSAL, "create %s", name);
 
 	*handle = NULL;		/* poison it first */
-	if (!dir_hdl->obj_ops.handle_is(dir_hdl, DIRECTORY)) {
+	if (!dir_hdl->obj_ops->handle_is(dir_hdl, DIRECTORY)) {
 		LogCrit(COMPONENT_FSAL,
 			"Parent handle is not a directory. hdl = 0x%p",
 			dir_hdl);
@@ -892,14 +894,14 @@ static fsal_status_t makesymlink(struct fsal_obj_handle *dir_hdl,
 #ifdef ENABLE_VFS_DEBUG_ACL
 	access_type = FSAL_MODE_MASK_SET(FSAL_W_OK) |
 		FSAL_ACE4_MASK_SET(FSAL_ACE_PERM_ADD_FILE);
-	status = dir_hdl->obj_ops.test_access(dir_hdl, access_type, NULL, NULL,
+	status = dir_hdl->obj_ops->test_access(dir_hdl, access_type, NULL, NULL,
 					      false);
 	if (FSAL_IS_ERROR(status))
 		return status;
 
 	fsal_prepare_attrs(&attrs, ATTR_ACL);
 
-	status = dir_hdl->obj_ops.getattrs(dir_hdl, &attrs);
+	status = dir_hdl->obj_ops->getattrs(dir_hdl, &attrs);
 
 	if (FSAL_IS_ERROR(status))
 		return status;
@@ -981,14 +983,14 @@ static fsal_status_t makesymlink(struct fsal_obj_handle *dir_hdl,
 		/* Now per support_ex API, if there are any other attributes
 		 * set, go ahead and get them set now.
 		 */
-		status = (*handle)->obj_ops.setattr2(*handle, false, NULL,
+		status = (*handle)->obj_ops->setattr2(*handle, false, NULL,
 						     attrib);
 		if (FSAL_IS_ERROR(status)) {
 			/* Release the handle we just allocated. */
-			(*handle)->obj_ops.release(*handle);
+			(*handle)->obj_ops->release(*handle);
 			*handle = NULL;
 		} else if (attrs_out != NULL) {
-			status = (*handle)->obj_ops.getattrs(*handle,
+			status = (*handle)->obj_ops->getattrs(*handle,
 							     attrs_out);
 			if (FSAL_IS_ERROR(status) &&
 			    (attrs_out->request_mask & ATTR_RDATTR_ERR) == 0) {
@@ -1201,9 +1203,26 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 	int nread;
 	struct vfs_dirent dentry, *dentryp = &dentry;
 	char buf[BUF_SIZE];
+	fsal_cookie_t cookie;
+	bool skip_first;
 
 	if (whence != NULL)
 		seekloc = (off_t) *whence;
+	cookie = seekloc;
+
+	/* If we don't start from beginning skip an entry */
+	skip_first = cookie != 0;
+
+	if (cookie == 0) {
+		/* Return a non-zero cookie for the first file. */
+		cookie = FIRST_COOKIE;
+	}
+
+	LogFullDebug(COMPONENT_FSAL,
+		     "whence=%p seekloc=%"PRIx64" cookie=%"PRIx64"%s",
+		     whence, (uint64_t) seekloc, cookie,
+		     skip_first ? " skip_first" : "");
+
 	myself = container_of(dir_hdl, struct vfs_fsal_obj_handle, obj_handle);
 	if (dir_hdl->fsal != dir_hdl->fs->fsal) {
 		LogDebug(COMPONENT_FSAL,
@@ -1244,10 +1263,28 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 			struct attrlist attrs;
 			enum fsal_dir_result cb_rc;
 
-			if (!to_vfs_dirent(buf, bpos, dentryp, baseloc)
-			    || strcmp(dentryp->vd_name, ".") == 0
-			    || strcmp(dentryp->vd_name, "..") == 0)
+			if (!to_vfs_dirent(buf, bpos, dentryp, baseloc))
+				goto skip;
+
+			LogFullDebug(COMPONENT_FSAL,
+				     "Entry %s last_ck=%"PRIx64
+				     " next_ck=%"PRIx64"%s",
+				     dentryp->vd_name, cookie,
+				     (uint64_t) dentryp->vd_offset,
+				     skip_first ? " skip_first" : "");
+
+			if (strcmp(dentryp->vd_name, ".") == 0 ||
+			    strcmp(dentryp->vd_name, "..") == 0)
 				goto skip;	/* must skip '.' and '..' */
+
+			/* If this is the first dirent found after a restarted
+			 * readdir, we actually just fetched the last dirent
+			 * from the previous call so we skip it.
+			 */
+			if (skip_first) {
+				skip_first = false;
+				goto skip;
+			}
 
 			fsal_prepare_attrs(&attrs, attrmask);
 
@@ -1260,7 +1297,7 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 
 			/* callback to cache inode */
 			cb_rc = cb(dentryp->vd_name, hdl, &attrs, dir_state,
-				(fsal_cookie_t) dentryp->vd_offset);
+				   cookie);
 
 			fsal_release_attrs(&attrs);
 
@@ -1269,6 +1306,9 @@ static fsal_status_t read_dirents(struct fsal_obj_handle *dir_hdl,
 				goto done;
 
  skip:
+			/* Save this d_off for the next cookie */
+			cookie = (fsal_cookie_t) dentryp->vd_offset;
+
 			bpos += dentryp->vd_reclen;
 		}
 	} while (nread > 0);
@@ -1717,6 +1757,8 @@ static fsal_status_t vfs_fs_locations(struct fsal_obj_handle *obj_hdl,
 
 void vfs_handle_ops_init(struct fsal_obj_ops *ops)
 {
+	fsal_default_obj_ops_init(ops);
+
 	ops->release = release;
 	ops->merge = vfs_merge;
 	ops->lookup = lookup;

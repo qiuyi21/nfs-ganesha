@@ -427,7 +427,11 @@ int nfs4_Init_state_id(void);
  */
 static inline void inc_state_t_ref(struct state_t *state)
 {
-	(void) atomic_inc_int32_t(&state->state_refcount);
+	int32_t refcount = atomic_inc_int32_t(&state->state_refcount);
+
+	LogFullDebug(COMPONENT_STATE,
+		     "State %p refcount now %"PRIi32,
+		     state, refcount);
 }
 
 void dec_nfs4_state_ref(struct state_t *state);
@@ -722,7 +726,7 @@ void state_del(state_t *state);
 static inline struct fsal_obj_handle *get_state_obj_ref_locked(state_t *state)
 {
 	if (state->state_obj) {
-		state->state_obj->obj_ops.get_ref(state->state_obj);
+		state->state_obj->obj_ops->get_ref(state->state_obj);
 	}
 
 	return state->state_obj;

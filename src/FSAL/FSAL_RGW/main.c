@@ -52,7 +52,7 @@ static const char *module_name = "RGW";
 
 /* filesystem info for RGW */
 static struct fsal_staticfsinfo_t default_rgw_info = {
-	.maxfilesize = UINT64_MAX,
+	.maxfilesize = INT64_MAX,
 	.maxlink = _POSIX_LINK_MAX,
 	.maxnamelen = 1024,
 	.maxpathlen = 1024,
@@ -390,6 +390,9 @@ MODULE_INIT void init(void)
 	/* Set up module operations */
 	myself->m_ops.create_export = create_export;
 	myself->m_ops.init_config = init_config;
+
+	/* Initialize the fsal_obj_handle ops for FSAL RGW */
+	handle_ops_init(&RGWFSM.handle_ops);
 }
 
 /**

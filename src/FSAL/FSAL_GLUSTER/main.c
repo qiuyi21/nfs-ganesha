@@ -43,7 +43,7 @@ const char glfsal_name[] = "GLUSTER";
 
 /* filesystem info for GLUSTERFS */
 static struct fsal_staticfsinfo_t default_gluster_info = {
-	.maxfilesize = UINT64_MAX,
+	.maxfilesize = INT64_MAX,
 	.maxlink = _POSIX_LINK_MAX,
 	.maxnamelen = 1024,
 	.maxpathlen = 1024,
@@ -70,6 +70,9 @@ static struct fsal_staticfsinfo_t default_gluster_info = {
 	.pnfs_mds = false,
 	.pnfs_ds = true,
 	.link_supports_permission_checks = true,
+#ifdef USE_GLUSTER_XREADDIRPLUS
+	.readdir_plus = true,
+#endif
 };
 
 static struct config_item glfs_params[] = {
@@ -145,6 +148,9 @@ MODULE_INIT void glusterfs_init(void)
 	 */
 	myself->m_ops.getdeviceinfo = getdeviceinfo;
 	myself->m_ops.fsal_pnfs_ds_ops = pnfs_ds_ops_init;
+
+	/* Initialize the fsal_obj_handle ops for FSAL GLUSTER */
+	handle_ops_init(&GlusterFS.handle_ops);
 
 	PTHREAD_MUTEX_init(&GlusterFS.lock, NULL);
 	glist_init(&GlusterFS.fs_obj);

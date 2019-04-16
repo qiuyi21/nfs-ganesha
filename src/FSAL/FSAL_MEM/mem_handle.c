@@ -554,7 +554,7 @@ _mem_alloc_handle(struct mem_fsal_obj_handle *parent,
 	hdl->attrs.supported = ATTRS_POSIX;
 
 	fsal_obj_handle_init(&hdl->obj_handle, &mfe->export, type);
-	mem_handle_ops_init(&hdl->obj_handle.obj_ops);
+	hdl->obj_handle.obj_ops = &MEM.handle_ops;
 
 	if (parent != NULL) {
 		/* Attach myself to my parent */
@@ -1450,7 +1450,7 @@ fsal_status_t mem_open2(struct fsal_obj_handle *obj_hdl,
 		}
 
 		if (attrs_out != NULL) {
-			status = (*new_obj)->obj_ops.getattrs(*new_obj,
+			status = (*new_obj)->obj_ops->getattrs(*new_obj,
 							      attrs_out);
 			if (FSAL_IS_ERROR(status) &&
 			    (attrs_out->request_mask & ATTR_RDATTR_ERR) == 0) {
@@ -1865,7 +1865,7 @@ fsal_status_t mem_close2(struct fsal_obj_handle *obj_hdl,
 		PTHREAD_RWLOCK_unlock(&obj_hdl->obj_lock);
 	}
 
-	status = mem_close_my_fd(&myself->mh_file.fd);
+	status = mem_close_my_fd(my_fd);
 
 	return status;
 }
@@ -1997,6 +1997,8 @@ static void mem_release(struct fsal_obj_handle *obj_hdl)
 
 void mem_handle_ops_init(struct fsal_obj_ops *ops)
 {
+	fsal_default_obj_ops_init(ops);
+
 	ops->release = mem_release;
 	ops->lookup = mem_lookup;
 	ops->readdir = mem_readdir;

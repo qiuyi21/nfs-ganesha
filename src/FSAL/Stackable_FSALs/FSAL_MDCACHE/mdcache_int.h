@@ -1,7 +1,7 @@
 /*
  * vim:noexpandtab:shiftwidth=8:tabstop=8:
  *
- * Copyright 2015-2017 Red Hat, Inc. and/or its affiliates.
+ * Copyright 2015-2018 Red Hat, Inc. and/or its affiliates.
  * Author: Daniel Gryniewicz <dang@redhat.com>
  *
  * This program is free software; you can redistribute it and/or
@@ -42,6 +42,14 @@
 #include "display.h"
 
 typedef struct mdcache_fsal_obj_handle mdcache_entry_t;
+
+struct mdcache_fsal_module {
+	struct fsal_module module;
+	struct fsal_obj_ops handle_ops;
+	struct fsal_staticfsinfo_t fs_info;
+};
+
+extern struct mdcache_fsal_module MDCACHE;
 
 #define MDC_UNEXPORT 1
 
@@ -266,7 +274,7 @@ struct mdcache_fsal_obj_handle {
 	union mdcache_fsobj {
 		struct state_hdl hdl;
 		struct {
-			/** List of chunks in this directory, not ordered */
+			/** List of chunks in this directory, ordered */
 			struct glist_head chunks;
 			/** List of detached directory entries. */
 			struct glist_head detached;
@@ -320,12 +328,6 @@ struct dir_chunk {
 	struct mdcache_fsal_obj_handle *parent;
 	/** LRU link */
 	mdcache_lru_t chunk_lru;
-	/** The previous chunk, this pointer is only de-referenced during
-	 *  chunk population (where the content_lock prevents the previous
-	 *  chunk from going invalid), or used to double check but not
-	 *  de-referenced.
-	 */
-	struct dir_chunk *prev_chunk;
 	/** Cookie of first entry in sequentially next chunk, will be set to
 	 *  0 if there is no sequentially next chunk.
 	 */
@@ -333,6 +335,10 @@ struct dir_chunk {
 	/** Number of entries in chunk */
 	int num_entries;
 };
+
+#define mdc_prev_chunk(c) glist_prev_entry(&(c)->parent->fsobj.fsdir.chunks, \
+			struct dir_chunk, chunks, &(c)->chunks)
+
 
 /**
  * @brief Represents a cached directory entry
@@ -343,6 +349,7 @@ struct dir_chunk {
 
 #define DIR_ENTRY_FLAG_NONE     0x0000
 #define DIR_ENTRY_FLAG_DELETED  0x0001
+#define DIR_ENTRY_REFFED        0x0002
 #define DIR_ENTRY_SORTED        0x0004
 
 typedef struct mdcache_dir_entry__ {
