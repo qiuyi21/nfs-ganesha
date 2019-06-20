@@ -279,7 +279,7 @@ int main(int argc, char *argv[])
 #ifdef HAVE_DAEMON
 		/* daemonize the process (fork, close xterm fds,
 		 * detach from parent process) */
-		if (daemon(0, 0))
+		if (daemon(1, 0))
 			LogFatal(COMPONENT_MAIN,
 				 "Error detaching process from parent: %s",
 				 strerror(errno));

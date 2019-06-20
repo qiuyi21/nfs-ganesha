@@ -1,0 +1,5 @@
+rpm --rebuilddb
+yum makecache fast
+yum install gcc git make cmake autoconf libtool bison flex rpm-build
+yum install krb5-devel libcap-devel libblkid-devel libuuid-devel gcc-c++ libnfsidmap-devel libattr-devel jemalloc-devel
+yum install libcephfs1-devel
